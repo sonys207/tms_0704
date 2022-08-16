@@ -19,10 +19,7 @@ use Carbon\Carbon;
 class Controller extends BaseController
 {
     
-	public function export() 
-	{
-		return Excel::download(new InvoicesExport, 'invoices.xlsx');
-	}
+
 	
     public function parse_parameters( $request1, $api_name){
          // dd($api_name);/* 方法名test*/
