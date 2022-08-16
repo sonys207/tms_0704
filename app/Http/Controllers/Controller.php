@@ -8,12 +8,22 @@ use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Log;
 use App\Exceptions\CustomException;
 use App\Functions\API_Azure_Log;
+use App\Functions\API_ServiceBus_Token;
+use App\Functions\API_Magento_Signature;
+use App\Exports\InvoicesExport;
+use Maatwebsite\Excel\Facades\Excel;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
+use Carbon\Carbon;
 
 class Controller extends BaseController
 {
-    //
+    
+	public function export() 
+	{
+		return Excel::download(new InvoicesExport, 'invoices.xlsx');
+	}
+	
     public function parse_parameters( $request1, $api_name){
          // dd($api_name);/* 方法名test*/
          return 'controlTest';
@@ -65,8 +75,9 @@ class Controller extends BaseController
             'message_content'=>array('alg'=>'RSA-OAEP-512-8',
             'value'=>"This is a audi Q8 from T606!!!"));
 		$postdatajson = json_encode($postdata2);  
-		Redis::set("tutorial-n9".mt_rand(1,1000000), $postdatajson); 
-		$test=Redis::get("tutorial-name1");
+        $postkey="tutorial-n9".mt_rand(1,1000000);
+		Redis::set($postkey, $postdatajson); 
+		$test=Redis::get($postkey);
         echo "Stored string in redis:: " .$test; 
        	
 	}
@@ -106,6 +117,9 @@ class Controller extends BaseController
          //页面提供一个功能，将json格式的信息黏贴进去，点击发送可以trigger这段代码再次发送message到service bus queue
          file_put_contents("php://stdout", 'Error(send message failure):  '.$postdatajson."\r\n");
     }
+
+
+
     //JWT TOKEN解析后有2个数组
     public function jwttoken(Request $Request)
     {
@@ -123,6 +137,7 @@ class Controller extends BaseController
     
     //key start
     /*思路，
+    参考链接 https://stackoverflow.com/questions/32143743/verifying-jwt-from-azure-active-directory
     call microsoft API获取certificate list，
     通过解析Client传入的token header来对应具体是哪个certificate，
     而后通过openssl来解析certificate对应的public key。用public key来decode token从而获取token的body部分
@@ -172,31 +187,118 @@ class Controller extends BaseController
     //key finish
 
 
-
-
-    
+    //tms-magento  order_status_change 
     public function sendsbmsas(Request $Request)
     {
+         //send API request to get service bus sas token
+         $uri="https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/tms-magento";
+         $sasKeyName="tms-magento_send";
+         $sasKeyValue="rNsdXcn4VMNc+yg8oDCYSYqsqoidql0kJXADZlieTDI=";
+         $SASToken=API_ServiceBus_Token::generateSasToken($uri,$sasKeyName,$sasKeyValue);
+        
          //send message to service bus with token
          $cURL = curl_init();
          $header=array(
               'Content-Type:application/atom+xml;type=entry;charset=utf-8',
-              'Authorization:SharedAccessSignature sr=https%3a%2f%2fsbn-tntdv-tmstset01.servicebus.windows.net%2fmagento-tms&sig=sCAAXNaFR75qDB8LqMxi%2Bez6ZDKGIEeezS%2B6e5U5KRk%3D&se=1686690092&skn=magento-tms_send',
-              'message_type:order_info_change'
+              'Authorization:'.$SASToken,
+              'Message-Type:order_status_change'
           );
-          //   new_order   require_delivery   order_status_change order_info_change
           //message content
-          $postdata2 = array(
-            'message_type'=>'order_info_change',
-            'message_content'=>array('alg'=>'RSA-OAEP-512-8',
-            'value'=>"This is a audi Q8 from T07!!!"));
+          //  order_id 000502212  000502213
+          $status_change_timestamp = Carbon::now()->timestamp;
+          $order_id="000502212";
+          $order_status="80";
+          
+       
+          $order_status_change = array(
+            'items'=>array(
+                            array('order_id '=>$order_id,
+                           'status'=>$order_status,
+                           'status_changed_at'=>$status_change_timestamp)
+           ));
          //转换为json格式
-         $postdatajson = json_encode($postdata2);
+         $json_order_status_change = json_encode($order_status_change);
+        // dd($postdatajson);
+         curl_setopt($cURL, CURLOPT_URL, "https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/tms-magento/messages");
+         curl_setopt($cURL, CURLOPT_RETURNTRANSFER, true);
+         curl_setopt($cURL, CURLOPT_HTTPHEADER, $header); 
+         curl_setopt($cURL, CURLOPT_POSTFIELDS, $json_order_status_change);
+         curl_setopt($cURL, CURLOPT_POST, true);
+         $json_response_data1 = curl_exec($cURL);
+         $info = curl_getinfo($cURL);
+         curl_close($cURL);
+         echo "<pre>";//输出换行，等同于键盘ctrl+u
+         print_r($info);
+         //发送成功201
+         print_r("The sending message response code is ".$info['http_code']); 
+         //如果发送失败，将发送失败的信息（json格式）存入log。
+         //页面提供一个功能，将json格式的信息黏贴进去，点击发送可以trigger这段代码再次发送message到service bus queue
+         file_put_contents("php://stdout", 'Error(send message failure):  '.$postdatajson."\r\n");
+    } 
+
+
+
+
+    //测试发送数据magento-tms
+    public function send_magento_to_tms(Request $Request)
+    {
+         //send API request to get service bus sas token
+         $uri="https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/magento-tms";
+         $sasKeyName="magento-tms_send";
+         $sasKeyValue="M7jySLOK0jICBCAZ4Hy75hS/m3x7owhlB5pTsX1W/24=";
+         $SASToken=API_ServiceBus_Token::generateSasToken($uri,$sasKeyName,$sasKeyValue);
+        
+         //send message to service bus with token
+         $cURL = curl_init();
+         $header=array(
+              'Content-Type:application/atom+xml;type=entry;charset=utf-8',
+              'Authorization:'.$SASToken,
+              'Message-Type:info_change'
+          );
+          //Message-Type
+          //  new_order   require_delivery   info_change     status_change
+         
+       
+          $order_status_change = array(
+                                /*  'order_id'=>array(100241180,100241181)
+                                  'order_type'=>1,
+                                  'delivery_type'=>1,
+                                  'store_id'=>'WS',
+                                  'unit'=>'',
+                                  'addr'=>'610 Alden Rd',
+                                  'city'=>'Markham',
+                                  'province'=>'Ontario',
+                                  'postal_code'=>'L6G 0B2',
+                                  'cell'=>'6470001010',
+                                  'delivery_window_from'=>1658239200,
+                                  'delivery_window_to'=>1658246400,
+                                  'comment'=>'test',
+                                  'est_weight'=>'12.11',
+                                  'init_at'=>1658141276
+                                  */
+                                /*    'order_id'=>'000502158',  
+                                  'comment'=>null,  
+                                  'final_weight'=>'22.1100',  
+                                  'scan_at'=>1658835682,  
+                                  'reg_bag_amount'=>1,  
+                                  'cold_bag_amount'=>2,  
+                                  'freeze_bag_amount'=>1,  
+                                  'warm_bag_amount'=>0*/
+                                //问题：1181就可以
+                                  'order_id'=>'000502213',  
+                                  'city'=>'Richmond Hill',
+                                  'postal_code'=>'L6G 0B2'
+                              /*   'order_id'=>array('000502158'),
+                                  'new_status'=>15*/
+
+           );
+         //转换为json格式
+         $json_order_status_change = json_encode($order_status_change);
         // dd($postdatajson);
          curl_setopt($cURL, CURLOPT_URL, "https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/magento-tms/messages");
          curl_setopt($cURL, CURLOPT_RETURNTRANSFER, true);
          curl_setopt($cURL, CURLOPT_HTTPHEADER, $header); 
-         curl_setopt($cURL, CURLOPT_POSTFIELDS, $postdatajson);
+         curl_setopt($cURL, CURLOPT_POSTFIELDS, $json_order_status_change);
          curl_setopt($cURL, CURLOPT_POST, true);
          $json_response_data1 = curl_exec($cURL);
          $info = curl_getinfo($cURL);
@@ -209,9 +311,11 @@ class Controller extends BaseController
          file_put_contents("php://stdout", 'Error(send message failure):  '.$postdatajson."\r\n");
     }    
 
+
+//receive data from logic app
     public function receivesbmsas(Request $Request)
     {
-        $la_paras = $Request->json()->all();
+      /*  $la_paras = $Request->json()->all();
         // dd($la_paras,typeof($la_paras));
         //获取data(需要decode),message id,locktoken
         foreach ($la_paras as $message){
@@ -221,36 +325,331 @@ class Controller extends BaseController
             file_put_contents("php://stdout", 'MessageId is:  '.$messageId."\r\n");
             // dd(count($la_paras),$decode_ContentData,$la_paras[0]['Properties']['LockToken'],$la_paras[0]['Properties']['MessageId']);
             //写入数据库成功后，调用类中定义删除方法
-            $this->deletesbmsas($decode_ContentData,$messageId,$LockToken);
-       }
+            $this->deletesbmsas($messageId,$LockToken);
+       }*/
+ 
+       $messageId="d960408762a94a6ba37d4259dfc615d9";
+       $LockToken="874767de-204f-40f6-8dba-f151cc277764";
+       $this->deletesbmsas($messageId,$LockToken);
     }
 
-    public function deletesbmsas($decode_ContentData,$messageId,$LockToken)
+    public function deletesbmsas($messageId,$LockToken)
     {
+        $uri="https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/magento-tms";
+        $sasKeyName="magento-tms_listen";
+        $sasKeyValue="eSGGBgF29rnrQ/PbH6tcqDnFohFcbDVLpSNNh5gTqwU=";
+        $SASToken=API_ServiceBus_Token::generateSasToken($uri,$sasKeyName,$sasKeyValue);
         $cURL = curl_init();
         $header=array(
-            'Authorization:SharedAccessSignature sr=https%3a%2f%2ftie0502.servicebus.windows.net%2fmagentoq&sig=nO39PLmWkAesRLK1VQ8A4NoG2gYcUG7tbHPCgjOYY68%3D&se=2283609685&skn=RootManageSharedAccessKey',
-         );
-         $messageId=$messageId;
-         $LockToken=$LockToken;
+            'Authorization:'.$SASToken
+         );      
+       
         // dd($messageId,$LockToken);
-         curl_setopt($cURL, CURLOPT_URL, "https://tie0502.servicebus.windows.net/magentoq/messages/".$messageId."/".$LockToken);
+         curl_setopt($cURL, CURLOPT_URL, "https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/magento-tms/messages/".$messageId."/".$LockToken);
          curl_setopt($cURL, CURLOPT_RETURNTRANSFER, true);
          curl_setopt($cURL, CURLOPT_HTTPHEADER, $header); 
          curl_setopt($cURL, CURLOPT_CUSTOMREQUEST, "DELETE");
          $json_response_data1 = curl_exec($cURL);
+        //https://docs.microsoft.com/en-us/rest/api/servicebus/delete-message
+        //http_code 200 means delete successfully
          $info = curl_getinfo($cURL);
          curl_close($cURL);
          print_r("The delete message response code is ".$info['http_code']."\r\n");
         return 'successfully';
     }
     
+
+
+
 	public function sha512(Request $Request)
-    {
-		$plaintext = "TNT1655407670d3dfc330c54c3f59d3dfc330c54c3f65";
+    {    
+		$plaintext = "TNT1659578076d3dfc330c54c3f59d3dfc330c54c3f65";
 		$sha512test = hash("sha512",$plaintext);
 		echo $sha512test;
 	}
+
+
+
+
+
+
+
+
+
+
+
+    public function get_time_slot(Request $Request)
+    {
+        //Get Signature
+        $order_id='000502063';
+        $oauth_nonce=md5(microtime());
+        $oauth_timestamp = Carbon::now()->timestamp;
+        $HTTP_method = "GET";
+        $URL = "https://test.tntnightmarket.biz/rest/V1/xmapi/tms/get-time-slot";
+        $requestParams = [
+            'order_id' => $order_id
+        ];
+        $Signature=API_Magento_Signature::generateMagentoSignature($oauth_nonce,$oauth_timestamp,$HTTP_method,$URL,$requestParams);
+        // Send request to magento
+        $cURL = curl_init();
+        $header=array(
+              'Authorization:OAuth oauth_consumer_key="h0e4me7qdycmggaqif2wsydcekjknu6n",oauth_token="lpdsohe1u9oqbxmpc2vp9du5u29nu5yh",oauth_signature_method="HMAC-SHA256",oauth_timestamp="'.$oauth_timestamp.'",oauth_nonce="'.$oauth_nonce.'",oauth_version="1.0",oauth_signature="'.$Signature.'"'
+          );
+
+        
+         curl_setopt($cURL, CURLOPT_URL, $URL."?order_id=".$order_id);
+         curl_setopt($cURL, CURLOPT_RETURNTRANSFER, true);
+         curl_setopt($cURL, CURLOPT_HTTPHEADER, $header); 
+         $magento_response_data = curl_exec($cURL);
+         $info = curl_getinfo($cURL);
+         curl_close($cURL);
+         $decode_magento_response_data=json_decode($magento_response_data);
+         if($decode_magento_response_data->code=="200"){
+         //遍历数组获取可用时间窗
+         dd($decode_magento_response_data->data);
+         
+        }
+    }
+
+    
+
+    public function update_time_slot(Request $Request)
+    {
+        //Get Signature
+        $oauth_nonce=md5(microtime());
+        $oauth_timestamp = Carbon::now()->timestamp;
+        $HTTP_method = "PUT";
+        $URL = "https://test.tntnightmarket.biz/rest/V1/xmapi/tms/update-time-slot";
+       
+        $Signature=API_Magento_Signature::generateMagentoSignature($oauth_nonce,$oauth_timestamp,$HTTP_method,$URL);
+        // Send request to magento
+        $cURL = curl_init();
+        $header=array(
+              'Content-Type:application/json',
+              'Authorization:OAuth oauth_consumer_key="h0e4me7qdycmggaqif2wsydcekjknu6n",oauth_token="lpdsohe1u9oqbxmpc2vp9du5u29nu5yh",oauth_signature_method="HMAC-SHA256",oauth_timestamp="'.$oauth_timestamp.'",oauth_nonce="'.$oauth_nonce.'",oauth_version="1.0",oauth_signature="'.$Signature.'"'
+          );
+
+        $post_order_timeslot = array(
+            'order_id'=>'000502063',
+            'start_time'=>'2022-07-17 16:00',
+            'end_time'=>'2022-07-17 18:00',
+        );
+         //转换为json格式
+         $post_order_timeslot_json = json_encode($post_order_timeslot);
+         curl_setopt($cURL, CURLOPT_URL, $URL);
+         curl_setopt($cURL, CURLOPT_RETURNTRANSFER, true);
+         curl_setopt($cURL, CURLOPT_HTTPHEADER, $header); 
+         curl_setopt($cURL, CURLOPT_POSTFIELDS, $post_order_timeslot_json);
+         curl_setopt($cURL, CURLOPT_CUSTOMREQUEST, "PUT");
+         $magento_response_data = curl_exec($cURL);
+         $info = curl_getinfo($cURL);
+         curl_close($cURL);
+         
+         $decode_magento_response_data=json_decode($magento_response_data);
+         dd($magento_response_data);
+         // "{"code":110005,"message":"2022-07-17 and %2 is invalid.","data":null,"tips":[]}"
+         if($decode_magento_response_data->code=="200"){
+         //返回给用户时间窗更新成功!
+         
+        }//如果为code 110005,则该时间窗没有capacity
+    }
+    
+    public function bulk_update_time_slot(Request $Request)
+    {
+        //Get Signature
+        $oauth_nonce=md5(microtime());
+        $oauth_timestamp = Carbon::now()->timestamp;
+        $HTTP_method = "POST";
+        $URL = "https://test.tntnightmarket.biz/rest/V1/xmapi/tms/bulk-update-time-slot";
+       
+        $Signature=API_Magento_Signature::generateMagentoSignature($oauth_nonce,$oauth_timestamp,$HTTP_method,$URL);
+        // Send request to magento
+        $cURL = curl_init();
+        $header=array(
+              'Content-Type:application/json',
+              'Authorization:OAuth oauth_consumer_key="h0e4me7qdycmggaqif2wsydcekjknu6n",oauth_token="lpdsohe1u9oqbxmpc2vp9du5u29nu5yh",oauth_signature_method="HMAC-SHA256",oauth_timestamp="'.$oauth_timestamp.'",oauth_nonce="'.$oauth_nonce.'",oauth_version="1.0",oauth_signature="'.$Signature.'"'
+          );
+
+        $post_order_timeslot = array('items'=>array(
+            array(
+            'order_id'=>'000502212',
+            'start_time'=>'2022-08-11 16:00',
+            'end_time'=>'2022-08-11 20:00'),
+            array(
+                'order_id'=>'000502213',
+                'start_time'=>'2022-08-11 16:00',
+                'end_time'=>'2022-08-11 20:00')
+        ));
+        
+         //转换为json格式
+         $post_order_timeslot_json = json_encode($post_order_timeslot);
+         curl_setopt($cURL, CURLOPT_URL, $URL);
+         curl_setopt($cURL, CURLOPT_RETURNTRANSFER, true);
+         curl_setopt($cURL, CURLOPT_HTTPHEADER, $header); 
+         curl_setopt($cURL, CURLOPT_POSTFIELDS, $post_order_timeslot_json);
+         curl_setopt($cURL, CURLOPT_POST, true);
+         $magento_response_data = curl_exec($cURL);
+         $info = curl_getinfo($cURL);
+         curl_close($cURL);
+         $decode_magento_response_data=json_decode($magento_response_data);
+         if($decode_magento_response_data->code=="200"){
+         //返回给用户批量时间窗更新成功!
+         dd($magento_response_data);
+        }
+    }
+
+
+
+   //获取可用时间窗by order
+   //只有Get方法有request parameter！！
+    public function auth1(Request $Request)
+    {
+        //随机数
+        $oauth_nonce=md5(microtime());
+        $oauth_timestamp = Carbon::now()->timestamp;
+        $HTTP_method = "GET";
+        $URL = "https://test.tntnightmarket.biz/rest/V1/xmapi/tms/get-time-slot";
+        $consumer_secret = "kvs5uz0uiry94tp2x0n99oydujf9fs97";
+        $access_token_secret = "s8cj1cx7wpmp2yg7mddfnv2lzuicijy4";
+
+        $requestParams = [
+            'order_id' => '000502063'
+        ];
+        $oauthParams = [
+            'oauth_nonce' => 'gruVe81234YHvvsGgozYbDYbb0AmBc3h1v',
+            'oauth_signature_method' => 'HMAC-SHA256',
+            'oauth_timestamp' => '1561080836',
+            'oauth_version' => '1.0',
+            'oauth_consumer_key' => 'h0e4me7qdycmggaqif2wsydcekjknu6n',
+            'oauth_token' => 'lpdsohe1u9oqbxmpc2vp9du5u29nu5yh'
+        ];
+
+        $params = array_merge($requestParams, $oauthParams);
+        
+        ksort($params);
+        
+     
+        $signData = [];
+        foreach ($params as $key => $value) {
+            $signData[] = $key . '=' . $value;
+        }
+    
+
+        $HTTP_method_urlencode = urlencode($HTTP_method);
+        $URL_urlencode = urlencode($URL);
+
+        $URL_data = $HTTP_method_urlencode . "&" . $URL_urlencode . "&" . urlencode(implode('&', $signData));
+        $Secert_Key = $consumer_secret . "&" . $access_token_secret;
+        $signature = hash_hmac('sha256', $URL_data, $Secert_Key, true);
+        $signatureEncode64 = base64_encode($signature);
+        echo $URL_data;
+        echo "<pre>";
+        echo $signatureEncode64;
+	}
+
+//单一订单时间窗update
+ public function auth2(Request $Request)
+    {
+        //随机数
+        $oauth_nonce=md5(microtime());
+        $oauth_timestamp = Carbon::now()->timestamp;
+        $HTTP_method = "PUT";
+        $URL = "https://test.tntnightmarket.biz/rest/V1/xmapi/tms/update-time-slot";
+        $consumer_secret = "kvs5uz0uiry94tp2x0n99oydujf9fs97";
+        $access_token_secret = "s8cj1cx7wpmp2yg7mddfnv2lzuicijy4";
+
+        $requestParams = [
+      
+        ];
+
+        $oauthParams = [
+            'oauth_nonce' => 'g44V851234Y5vvsGgozYbDYbb0AmBc3h1v',
+            'oauth_signature_method' => 'HMAC-SHA256',
+            'oauth_timestamp' => '1561080845',
+            'oauth_version' => '1.0',
+            'oauth_consumer_key' => 'h0e4me7qdycmggaqif2wsydcekjknu6n',
+            'oauth_token' => 'lpdsohe1u9oqbxmpc2vp9du5u29nu5yh'
+        ];
+
+        $params = array_merge($requestParams, $oauthParams);
+        
+        ksort($params);
+        
+     
+        $signData = [];
+        foreach ($params as $key => $value) {
+            $signData[] = $key . '=' . $value;
+        }
+      
+        
+        $HTTP_method_urlencode = urlencode($HTTP_method);
+        $URL_urlencode = urlencode($URL);
+
+        $URL_data = $HTTP_method_urlencode . "&" . $URL_urlencode . "&" . urlencode(implode('&', $signData));
+        $Secert_Key = $consumer_secret . "&" . $access_token_secret;
+        $signature = hash_hmac('sha256', $URL_data, $Secert_Key, true);
+        $signatureEncode64 = base64_encode($signature);
+        echo $URL_data;
+        echo "<pre>";
+        echo $signatureEncode64;
+	}
+
+
+
+    public function auth3(Request $Request)
+    {
+        //随机数
+        $oauth_nonce=md5(microtime());
+        $oauth_timestamp = Carbon::now()->timestamp;
+        $HTTP_method = "POST";
+        $URL = "https://test.tntnightmarket.biz/rest/V1/xmapi/tms/bulk-update-time-slot";
+        $consumer_secret = "kvs5uz0uiry94tp2x0n99oydujf9fs97";
+        $access_token_secret = "s8cj1cx7wpmp2yg7mddfnv2lzuicijy4";
+
+        $requestParams = [
+           
+        ];
+
+        $oauthParams = [
+            'oauth_nonce' => 'g44V85y234Y8vvsGgoz5brYbb0AmBc3h1v',
+            'oauth_signature_method' => 'HMAC-SHA256',
+            'oauth_timestamp' => '1561080878',
+            'oauth_version' => '1.0',
+            'oauth_consumer_key' => 'h0e4me7qdycmggaqif2wsydcekjknu6n',
+            'oauth_token' => 'lpdsohe1u9oqbxmpc2vp9du5u29nu5yh'
+        ];
+
+        $params = array_merge($requestParams, $oauthParams);
+        
+        ksort($params);
+        
+     
+        $signData = [];
+        foreach ($params as $key => $value) {
+            $signData[] = $key . '=' . $value;
+        }
+      
+        
+        $HTTP_method_urlencode = urlencode($HTTP_method);
+        $URL_urlencode = urlencode($URL);
+
+        $URL_data = $HTTP_method_urlencode . "&" . $URL_urlencode . "&" . urlencode(implode('&', $signData));
+        $Secert_Key = $consumer_secret . "&" . $access_token_secret;
+        $signature = hash_hmac('sha256', $URL_data, $Secert_Key, true);
+        $signatureEncode64 = base64_encode($signature);
+        echo $URL_data;
+        echo "<pre>";
+        echo $signatureEncode64;
+	}
+
+
+
+
+
+
+
+
+
 	//12669454f6746429fc24f2d58296b6031d1278b22dc61eaff9109b963af34b8fae5e6514d579929a9cd5bea7f9e308fb5e7637fa5d54aac061401143fcf2556c
 	
 	//12669454f6746429fc24f2d58296b6031d1278b22dc61eaff9109b963af34b8fae5e6514d579929a9cd5bea7f9e308fb5e7637fa5d54aac061401143fcf2556c
