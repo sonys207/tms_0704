@@ -40,7 +40,7 @@ class Controller extends BaseController
 	  
 		
 		  // Excel file name for download 
-		$fileName = "codexworld_export_data-" . date('Ymd') . ".xls"; 
+		$fileName = "codexworld_export_data-" . date('Ymd') . ".csv"; 
 		
 		// Headers for download 
 		header("Content-Disposition:attachment;filename=\"$fileName\""); 
@@ -51,7 +51,7 @@ class Controller extends BaseController
 			if(!$flag) { 
 				// display column names as first row 
 				
-				echo implode("\t", array_keys($row)) . "\n"; 
+				echo implode(",", array_keys($row)) . "\n"; 
 				$flag = true; 
 			} 
 			// filter data 
@@ -60,7 +60,7 @@ class Controller extends BaseController
 		$str = preg_replace("/\r?\n/", "\\n", $str); 
 		if(strstr($str, '"')) $str = '"' . str_replace('"', '""', $str) . '"'; 
 	    } ); 
-			echo implode("\t", array_values($row)) . "\n"; 
+			echo implode(",", array_values($row)) . "\n"; 
 		} 
 
 		exit;
