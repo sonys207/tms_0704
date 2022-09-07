@@ -50,7 +50,7 @@ class Controller extends BaseController
 		    
 			if(!$flag) { 
 				// display column names as first row 
-				
+				//"\t" means xls. "," means csv
 				echo implode(",", array_keys($row)) . "\n"; 
 				$flag = true; 
 			} 
@@ -117,7 +117,7 @@ class Controller extends BaseController
 		$postdatajson = json_encode($postdata2);  
         $postkey="tutorial-n9".mt_rand(1,1000000);
 		Redis::set($postkey, $postdatajson); 
-		$test=Redis::get($postkey);
+		$test=Redis::get("ORDER:INDEX:000502171");
         echo "Stored string in redis:: " .$test; 
        	
 	}
@@ -246,13 +246,13 @@ class Controller extends BaseController
           //message content
           //  order_id 000502212  000502213
           $status_change_timestamp = Carbon::now()->timestamp;
-          $order_id="000502212";
+          $order_id="000502300";
           $order_status="80";
           
        
           $order_status_change = array(
             'items'=>array(
-                            array('order_id '=>$order_id,
+                            array('order_id'=>$order_id,
                            'status'=>$order_status,
                            'status_changed_at'=>$status_change_timestamp)
            ));
@@ -287,35 +287,36 @@ class Controller extends BaseController
          $sasKeyName="magento-tms_send";
          $sasKeyValue="M7jySLOK0jICBCAZ4Hy75hS/m3x7owhlB5pTsX1W/24=";
          $SASToken=API_ServiceBus_Token::generateSasToken($uri,$sasKeyName,$sasKeyValue);
-        
+      /*   for ($i=1; $i<=101; $i++)
+         {
+            $order_id= (string)(100505600+$i);*/
          //send message to service bus with token
          $cURL = curl_init();
          $header=array(
               'Content-Type:application/atom+xml;type=entry;charset=utf-8',
               'Authorization:'.$SASToken,
-              'Message-Type:info_change'
+              'Message-Type:new_order'
           );
           //Message-Type
           //  new_order   require_delivery   info_change     status_change
          
        
           $order_status_change = array(
-                                /*  'order_id'=>array(100241180,100241181)
-                                  'order_type'=>1,
-                                  'delivery_type'=>1,
-                                  'store_id'=>'WS',
-                                  'unit'=>'',
-                                  'addr'=>'610 Alden Rd',
-                                  'city'=>'Markham',
-                                  'province'=>'Ontario',
-                                  'postal_code'=>'L6G 0B2',
-                                  'cell'=>'6470001010',
-                                  'delivery_window_from'=>1658239200,
-                                  'delivery_window_to'=>1658246400,
-                                  'comment'=>'test',
-                                  'est_weight'=>'12.11',
-                                  'init_at'=>1658141276
-                                  */
+            "order_id"=>100506050,
+            "order_type"=>"express_delivery",
+            "init_at"=>1662282475,
+            "store_id"=>"WY",
+            "province"=>"Ontario",
+            "city"=>"Whitby",
+            "addr"=>"130 Taunton Rd W",
+            "postal_code"=>"L1R 3H8",
+            "cell"=>"4176478758",
+            "delivery_window_from"=>1662408000,
+            "delivery_window_to"=>1662415200,
+            "comment"=>null,
+            "est_weight"=>"7.8200",
+            "unit"=>"lb" 
+                                  
                                 /*    'order_id'=>'000502158',  
                                   'comment'=>null,  
                                   'final_weight'=>'22.1100',  
@@ -325,9 +326,9 @@ class Controller extends BaseController
                                   'freeze_bag_amount'=>1,  
                                   'warm_bag_amount'=>0*/
                                 //问题：1181就可以
-                                  'order_id'=>'000502213',  
+                               /*   'order_id'=>'000502213',  
                                   'city'=>'Richmond Hill',
-                                  'postal_code'=>'L6G 0B2'
+                                  'postal_code'=>'L6G 0B2'*/
                               /*   'order_id'=>array('000502158'),
                                   'new_status'=>15*/
 
@@ -343,6 +344,7 @@ class Controller extends BaseController
          $json_response_data1 = curl_exec($cURL);
          $info = curl_getinfo($cURL);
          curl_close($cURL);
+   //     }  
          echo "<pre>";//输出换行，等同于键盘ctrl+u
          print_r($info);
          print_r("The sending message response code is ".$info['http_code']); 
@@ -421,7 +423,7 @@ class Controller extends BaseController
     public function get_time_slot(Request $Request)
     {
         //Get Signature
-        $order_id='000502063';
+        $order_id='000502219';
         $oauth_nonce=md5(microtime());
         $oauth_timestamp = Carbon::now()->timestamp;
         $HTTP_method = "GET";
@@ -470,9 +472,9 @@ class Controller extends BaseController
           );
 
         $post_order_timeslot = array(
-            'order_id'=>'000502063',
-            'start_time'=>'2022-07-17 16:00',
-            'end_time'=>'2022-07-17 18:00',
+            'order_id'=>'000502305',
+            'start_time'=>'2022-09-03 14:00',
+            'end_time'=>'2022-09-03 16:00',
         );
          //转换为json格式
          $post_order_timeslot_json = json_encode($post_order_timeslot);
