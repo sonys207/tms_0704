@@ -20,13 +20,14 @@ $router->get('/', function () use ($router) {
   $content=['name' => 'Abigail', 'state' => 'CA'];
   $statusCode="201";
   $value="jjson";
-  $debug = env('APP_TIMEZONE', true);
+  $debug = env('AzureLog_ApiVersion', true);
+  $instance_id = env('WEBSITE_INSTANCE_ID', true);
  /* return response($content, $statusCode)
          ->header('Content-Type', $value)
          ->header('X-Header-One', 'Header Value');*/
  //return response($content, $statusCode)->json(['name' => 'Abigail', 'state' => 'CA']);
  //下面这种方式最好
- return response()->json(['name' => $debug, 'state' => 'CA'])->header('X-Header-One', 'Header Value')->header('X-Header-2', 'Header Value 2');
+ return response()->json(['name' => $debug, 'state' => $instance_id])->header('X-Header-One', 'Header Value')->header('X-Header-2', 'Header Value 2');
 });
 
 $router->get('/key', function() {
