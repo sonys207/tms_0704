@@ -246,8 +246,8 @@ class Controller extends BaseController
           //message content
           //  order_id 000502212  000502213
           $status_change_timestamp = Carbon::now()->timestamp;
-          $order_id="000502300";
-          $order_status="80";
+          $order_id="100506057";
+          $order_status="90";
           
        
           $order_status_change = array(
@@ -277,60 +277,112 @@ class Controller extends BaseController
     } 
 
 
-
+ //tms-tms  change_log
+ public function sendsbmtt(Request $Request)
+ {
+      //send API request to get service bus sas token
+      $uri="https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/tms-tms";
+      $sasKeyName="tms-tms_send";
+      $sasKeyValue="nzUZyk2USL4k5YG4q4UgIBLMxrT5yFbqo3LDc82NAyg=";
+      $SASToken=API_ServiceBus_Token::generateSasToken($uri,$sasKeyName,$sasKeyValue);
+     
+      //send message to service bus with token
+      $cURL = curl_init();
+      $header=array(
+           'Content-Type:application/atom+xml;type=entry;charset=utf-8',
+           'Authorization:'.$SASToken,
+           'Message-Type:change_log'
+       );
+       //message content
+       //  order_id 000502212  000502213
+       $status_change_timestamp = Carbon::now()->timestamp;
+       $order_id="100506061";
+       $order_status="90";
+       
+    
+       $order_status_change = array(
+         'items'=>array(
+                         array('order_id'=>$order_id,
+                        'status'=>$order_status,
+                        'status_changed_at'=>$status_change_timestamp)
+        ));
+      //转换为json格式
+      $json_order_status_change = json_encode($order_status_change);
+     // dd($postdatajson);
+      curl_setopt($cURL, CURLOPT_URL, "https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/tms-tms/messages");
+      curl_setopt($cURL, CURLOPT_RETURNTRANSFER, true);
+      curl_setopt($cURL, CURLOPT_HTTPHEADER, $header); 
+      curl_setopt($cURL, CURLOPT_POSTFIELDS, $json_order_status_change);
+      curl_setopt($cURL, CURLOPT_POST, true);
+      $json_response_data1 = curl_exec($cURL);
+      $info = curl_getinfo($cURL);
+      curl_close($cURL);
+      echo "<pre>";//输出换行，等同于键盘ctrl+u
+      print_r($info);
+      //发送成功201
+      print_r("The sending message response code is ".$info['http_code']); 
+      //如果发送失败，将发送失败的信息（json格式）存入log。
+      //页面提供一个功能，将json格式的信息黏贴进去，点击发送可以trigger这段代码再次发送message到service bus queue
+      file_put_contents("php://stdout", 'Error(send message failure):  '.$postdatajson."\r\n");
+ } 
 
     //测试发送数据magento-tms
     public function send_magento_to_tms(Request $Request)
     {
+        ini_set('max_execution_time', '0');
          //send API request to get service bus sas token
          $uri="https://SBN-TNTDV-TMSTSET01.servicebus.windows.net/magento-tms";
          $sasKeyName="magento-tms_send";
          $sasKeyValue="M7jySLOK0jICBCAZ4Hy75hS/m3x7owhlB5pTsX1W/24=";
          $SASToken=API_ServiceBus_Token::generateSasToken($uri,$sasKeyName,$sasKeyValue);
-      /*   for ($i=1; $i<=101; $i++)
+         $header=array(
+            'Content-Type:application/atom+xml;type=entry;charset=utf-8',
+            'Authorization:'.$SASToken,
+            'Message-Type:status_change'
+        );
+         //Message-Type
+          //  new_order   require_delivery   info_change     status_change
+       for ($i=0; $i<=0; $i++)
          {
-            $order_id= (string)(100505600+$i);*/
+            $order_id= (string)(100504080+$i);
          //send message to service bus with token
          $cURL = curl_init();
-         $header=array(
-              'Content-Type:application/atom+xml;type=entry;charset=utf-8',
-              'Authorization:'.$SASToken,
-              'Message-Type:new_order'
-          );
-          //Message-Type
-          //  new_order   require_delivery   info_change     status_change
-         
-       
+
           $order_status_change = array(
-            "order_id"=>100506050,
-            "order_type"=>"express_delivery",
-            "init_at"=>1662282475,
-            "store_id"=>"WY",
+           /* "order_id"=>$order_id,
+            "order_type"=>"same_day",
+            "init_at"=>1667239200,
+            "store_id"=>"WS",
             "province"=>"Ontario",
-            "city"=>"Whitby",
-            "addr"=>"130 Taunton Rd W",
-            "postal_code"=>"L1R 3H8",
-            "cell"=>"4176478758",
-            "delivery_window_from"=>1662408000,
-            "delivery_window_to"=>1662415200,
-            "comment"=>null,
-            "est_weight"=>"7.8200",
-            "unit"=>"lb" 
+            "city"=>"Scarborough",
+            "addr"=>"1050 Huntingwood Dr",
+            "postal_code"=>"M1S 3H5",
+            "cell"=>"1234567890",
+            "delivery_window_from"=>1667253600,
+            "delivery_window_to"=>1667260800,
+            "comment"=>"test",
+            "est_weight"=>"2.0000",
+            "unit"=>"lb"*/
                                   
-                                /*    'order_id'=>'000502158',  
+                                  /*'order_id'=>'000502493',  
                                   'comment'=>null,  
-                                  'final_weight'=>'22.1100',  
-                                  'scan_at'=>1658835682,  
-                                  'reg_bag_amount'=>1,  
-                                  'cold_bag_amount'=>2,  
-                                  'freeze_bag_amount'=>1,  
-                                  'warm_bag_amount'=>0*/
+                                  'final_weight'=>'55.1100',  
+                                  'scan_at'=>1667505600,  
+                                  'reg_bag_amount'=>25,  
+                                  'cold_bag_amount'=>4,  
+                                  'freeze_bag_amount'=>2,  
+                                  'warm_bag_amount'=>13*/
+                                     
                                 //问题：1181就可以
-                               /*   'order_id'=>'000502213',  
-                                  'city'=>'Richmond Hill',
-                                  'postal_code'=>'L6G 0B2'*/
-                              /*   'order_id'=>array('000502158'),
-                                  'new_status'=>15*/
+                                 /*  'order_id'=>$order_id,
+                                  'province'=>'Ontario',
+                                  'city'=>'Ottawa',
+                                  'addr'=>'151 Lees Ave, Apt.1202',
+                                  'postal_code'=>'K1S 5P3',
+                                  'cell'=>'6138694146'*/
+
+                                 'order_id'=>array($order_id),
+                                 'new_status'=>99
 
            );
          //转换为json格式
@@ -344,13 +396,13 @@ class Controller extends BaseController
          $json_response_data1 = curl_exec($cURL);
          $info = curl_getinfo($cURL);
          curl_close($cURL);
-   //     }  
+        }  
          echo "<pre>";//输出换行，等同于键盘ctrl+u
          print_r($info);
          print_r("The sending message response code is ".$info['http_code']); 
          //如果发送失败，将发送失败的信息（json格式）存入log。
          //页面提供一个功能，将json格式的信息黏贴进去，点击发送可以trigger这段代码再次发送message到service bus queue
-         file_put_contents("php://stdout", 'Error(send message failure):  '.$postdatajson."\r\n");
+         file_put_contents("php://stdout", 'Error(send message failure):  '.$json_response_data1."\r\n");
     }    
 
 

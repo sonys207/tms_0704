@@ -20,12 +20,13 @@ $router->get('/', function () use ($router) {
   $content=['name' => 'Abigail', 'state' => 'CA'];
   $statusCode="201";
   $value="jjson";
+  $debug = env('APP_TIMEZONE', true);
  /* return response($content, $statusCode)
          ->header('Content-Type', $value)
          ->header('X-Header-One', 'Header Value');*/
  //return response($content, $statusCode)->json(['name' => 'Abigail', 'state' => 'CA']);
  //下面这种方式最好
- return response()->json(['name' => 'Abigail', 'state' => 'CA'])->header('X-Header-One', 'Header Value')->header('X-Header-2', 'Header Value 2');
+ return response()->json(['name' => $debug, 'state' => 'CA'])->header('X-Header-One', 'Header Value')->header('X-Header-2', 'Header Value 2');
 });
 
 $router->get('/key', function() {
@@ -39,6 +40,7 @@ $router->get('/export', 'Controller@export');
 $router->get('/getkey', 'Controller@getkey');
 $router->get('/create_order', 'Controller@create_order');
 $router->get('/sendsbmsas', 'Controller@sendsbmsas');
+$router->get('/sendsbmtt', 'Controller@sendsbmtt');
 $router->get('/sendsbmsasbatch', 'Controller@sendsbmsasbatch');
 $router->get('/test', 'Controller@test');
 $router->get('/testAES', 'Controller@testAES');
